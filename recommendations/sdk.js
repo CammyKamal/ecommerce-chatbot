@@ -32,17 +32,17 @@ module.exports = (apikey) => {
 
     return {
         model: {
-            list: () => request({
+            list: async () => request({
                 uri: 'https://westus.api.cognitive.microsoft.com/recommendations/v4.0/models',
                 headers,
                 json: true
-            }),
-            delete: (id) => request({
+            }).then(({ models }) => models),
+            delete: async (id) => request({
                 uri: `https://westus.api.cognitive.microsoft.com/recommendations/v4.0/models/${id}`,
                 method: 'DELETE',
                 headers
             }),
-            create: (modelName, description) => request({
+            create: async (modelName, description) => request({
                 uri: 'https://westus.api.cognitive.microsoft.com/recommendations/v4.0/models',
                 method: 'POST',
                 headers: headersJson,
@@ -52,7 +52,7 @@ module.exports = (apikey) => {
         },
 
         upload: {
-            catalog: (modelId, name, file) => readFileAndPost(file, {
+            catalog: async (modelId, name, file) => readFileAndPost(file, {
                 uri: `https://westus.api.cognitive.microsoft.com/recommendations/v4.0/models/${modelId}/catalog?catalogDisplayName=${name}`,
                 method: 'POST',
                 headers: headersBinary
@@ -64,7 +64,7 @@ module.exports = (apikey) => {
                 }
             }),
 
-            usage: (modelId, name, file) => readFileAndPost(file, {
+            usage: async (modelId, name, file) => readFileAndPost(file, {
                 uri: `https://westus.api.cognitive.microsoft.com/recommendations/v4.0/models/${modelId}/usage?usageDisplayName=${name}`,
                 method: 'POST',
                 headers: headersBinary
@@ -78,7 +78,7 @@ module.exports = (apikey) => {
         },
 
         build: {
-            fbt: (modelId, description) => request({
+            fbt: async (modelId, description) => request({
                 uri: `https://westus.api.cognitive.microsoft.com/recommendations/v4.0/models/${modelId}/builds`,
                 method: 'POST',
                 headers: headersJson,
@@ -92,7 +92,7 @@ module.exports = (apikey) => {
                 }
             }),
 
-            get: (modelId, buildId) => request({
+            get: async (modelId, buildId) => request({
                 uri: `https://westus.api.cognitive.microsoft.com/recommendations/v4.0/models/${modelId}/builds/${buildId}`,
                 headers,
                 json: true

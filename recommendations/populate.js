@@ -2,7 +2,6 @@ const request = require('request-promise-native');
 const fs = require('fs');
 const path = require('path');
 const sdk = require('./sdk')(process.env.RECOMMENDATION_API_KEY);
-const repeater = require('./repeater');
 
 const catalog = process.argv[2];
 if (!catalog || !fs.existsSync(catalog)) {
@@ -12,46 +11,45 @@ if (!catalog || !fs.existsSync(catalog)) {
 const modelName = process.argv[3] || 'eComm-Chatbot';
 const description = process.argv[4] || 'Adventure Works Recommendations';
 
-let model = undefined;
-let build = undefined;
+const run = async () => {
+    const models = await sdk.model.list();
 
-sdk.model.list()
-    .then(({ models }) => {
-        const model = models.find(m => m.name === modelName);
-        if (model) {
-            console.log(`There is already a recommendation model named ${modelName}. The existing model needs to be deleted first`);
+    let model = models.find(m => m.name === modelName);
+    if (model) {
+        console.log(`There is already a recommendation model named ${modelName}. The existing model needs to be deleted first`);
 
-            return sdk.model.delete(model.id);
+        await sdk.model.delete(model.id);
+    }
+
+    model = await sdk.model.create(modelName, description);
+    console.log(`Model ${model.id} created succesfully`);
+
+    await sdk.upload.catalog(model.id, 'AdventureWorks', path.resolve(catalog, 'recommendations-catalog.csv'));
+    await sdk.upload.usage(model.id, 'OnlineSales', path.resolve(catalog, 'recommendations-usage.csv'));
+
+    const build = await sdk.build.fbt(model.id, 'FBT build for Adventure Works');
+    console.log(`FBT build ${build.buildId} created succesfully. Will now wait for the training to finish.`);
+
+    let trained = false;
+    while (!trained) {
+        let check = await sdk.build.get(model.id, build.buildId);
+
+        if (!['NotStarted', 'Running'].includes(check.status)) {
+            trained = true;
+            console.log(`Build training finished: ${check.status}`);
         } else {
-            return Promise.resolve();
+            console.log(`Training is ${check.status}. Will check again in 30 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 30000));
         }
-    }).then(() => {
-        return sdk.model.create(modelName, description);
-    }).then(result => {
-        model = result;
+    }
 
-        console.log(`Model ${model.id} created succesfully`);
-    }).then(() => {
-        return sdk.upload.catalog(model.id, 'AdventureWorks', path.resolve(catalog, 'recommendations-catalog.csv'));
-    }).then(() => {
-        return sdk.upload.usage(model.id, 'OnlineSales', path.resolve(catalog, 'recommendations-usage.csv'));
-    }).then(() => {
-        return sdk.build.fbt(model.id, 'FBT build for Adventure Works')
-    }).then(result => {
-        build = result;
+    return { model, build };
+}
 
-        console.log(`FBT build ${build.buildId} created succesfully. Will now wait for the training to finish.`);
+run().then(({ model, build }) => {
+    console.log('All said and done');
+    console.log(`Set RECOMMENDATION_MODEL to ${model.id}`);
+    console.log(`Set RECOMMENDATION_BUILD to ${build.buildId}`);
+});;
 
-        return repeater.repeat(() => sdk.build.get(model.id, build.buildId), {
-            delay: 30000,
-            until: (response) => !['Not Started', 'Running'].includes(response.status),
-            done: (response) => console.log(`Build training finished: ${response.status}`),
-            next: (response, delay) => console.log(`Training is ${response.status}. Will check again in ${delay / 1000} seconds...`)
-        });
-    }).then(() => {
-        console.log('All said and done');
-        console.log(`Set RECOMMENDATION_MODEL to ${model.id}`);
-        console.log(`Set RECOMMENDATION_BUILD to ${build.buildId}`);
-    }).catch(error => {
-        console.error(error);
-    });
+
